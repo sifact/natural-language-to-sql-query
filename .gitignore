@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Generated demo database
+data/demo.sqlite3
+
+# User-supplied benchmark assets and local reports
+data/benchmark/
+
+# Local secrets
+.env
+
+# hve-core RPI working notes (local only)
+.copilot-tracking/
