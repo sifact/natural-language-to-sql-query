@@ -8,6 +8,7 @@ import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
+from urllib.parse import urlsplit
 
 from ..agent.model_client import ChatCompletionClient, ModelError
 from ..agent.sql_agent import AgentError, SqlAgent
@@ -48,8 +49,27 @@ def _ask(question: str, settings: Settings) -> dict[str, object]:
     }
 
 
-def _schema(settings: Settings) -> list[dict[str, object]]:
-    return DatabaseTools(DEFAULT_DATABASE_PATH, settings=settings).inspect_schema()
+def _data(settings: Settings) -> list[dict[str, object]]:
+    """Return every demo table with its columns and rows; the demo data is tiny."""
+    tools = DatabaseTools(DEFAULT_DATABASE_PATH, settings=settings)
+    tables = []
+    for table in tools.inspect_schema():
+        name = str(table["table_name"])
+        result = tools.query(f'SELECT * FROM "{name}"')
+        tables.append(
+            {
+                "name": name,
+                "columns": table["columns"],
+                "rows": result.rows,
+                "truncated": result.truncated,
+            }
+        )
+    return tables
+
+
+def _info(settings: Settings) -> dict[str, object]:
+    """Describe which model writes the SQL, without exposing credentials."""
+    return {"model": settings.model_name, "endpoint": urlsplit(settings.model_url).hostname}
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -58,9 +78,11 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path in {"/", "/index.html"}:
             self._send(HTTPStatus.OK, _index_html(), "text/html; charset=utf-8")
-        elif self.path == "/api/schema":
+        elif self.path == "/api/info":
+            self._send_json(HTTPStatus.OK, _info(self.settings))
+        elif self.path == "/api/data":
             try:
-                self._send_json(HTTPStatus.OK, {"tables": _schema(self.settings)})
+                self._send_json(HTTPStatus.OK, {"tables": _data(self.settings)})
             except (DatabaseToolError, OSError, sqlite3.Error) as error:
                 self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(error)})
         else:

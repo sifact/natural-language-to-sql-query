@@ -100,8 +100,8 @@ Start the local playground after `nl-sql init` and the model settings above:
 uv run nl-sql serve            # http://127.0.0.1:8000, or pass --port
 ```
 
-The **Query** tab sends a question to the agent and shows its answer, final SQL,
-result rows and the tool steps it took. The **Schema** tab lists the demo tables.
+The **Ask** tab sends a question to the agent and shows its answer, the SQL the model wrote,
+result rows and the steps it took. The **Data** tab shows every demo table and its rows.
 The server listens on loopback only and keeps the API key server-side.
 
 ## Local benchmark assets and preflight
