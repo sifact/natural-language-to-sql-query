@@ -17,6 +17,9 @@ MAX_RESPONSE_BYTES = 1_000_000
 MAX_RATE_LIMIT_RETRIES = 8
 DEFAULT_RATE_LIMIT_WAIT_SECONDS = 20.0
 MAX_RATE_LIMIT_WAIT_SECONDS = 65.0
+# Some hosts reject a malformed model tool call with HTTP 400; a fresh sample usually
+# succeeds, so a few retries avoid failing the whole task on one bad generation.
+MAX_MALFORMED_TOOL_CALL_RETRIES = 3
 
 Transport = Callable[[Request, float], bytes]
 
@@ -131,10 +134,17 @@ class ChatCompletionClient:
         return self._parse_response(decoded)
 
     def _send_with_rate_limit_retries(self, request: Request) -> bytes:
+        malformed_retries = 0
         for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
             try:
                 return self.transport(request, self.timeout)
             except HTTPError as error:
+                if (
+                    _is_malformed_tool_call(error)
+                    and malformed_retries < MAX_MALFORMED_TOOL_CALL_RETRIES
+                ):
+                    malformed_retries += 1
+                    continue
                 if error.code != 429 or attempt == MAX_RATE_LIMIT_RETRIES:
                     raise ModelError(
                         f"Model endpoint returned HTTP {error.code}."
@@ -242,3 +252,14 @@ def _retry_after_seconds(error: HTTPError) -> float:
     except ValueError:
         wait = DEFAULT_RATE_LIMIT_WAIT_SECONDS
     return min(max(wait, 1.0), MAX_RATE_LIMIT_WAIT_SECONDS)
+
+
+def _is_malformed_tool_call(error: HTTPError) -> bool:
+    """Detect the host-side rejection of a malformed tool call from the model."""
+    if error.code != 400:
+        return False
+    try:
+        body = error.read(10_000)
+    except OSError:
+        return False
+    return b"tool_use_failed" in body
