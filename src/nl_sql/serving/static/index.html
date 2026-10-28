@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nl-sql Playground</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel-2: #1d212a; --border: #2a2f3a;
+    --text: #e6e8ec; --muted: #9aa3b2; --accent: #7aa2f7; --ok: #7dcf9a;
+    --warn: #e0af68; --err: #f7768e; --code: #c0caf5;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: baseline; gap: 12px; padding: 18px 24px 0; }
+  header h1 { margin: 0; font-size: 20px; }
+  header span { color: var(--muted); font-size: 13px; }
+  nav { display: flex; gap: 4px; padding: 14px 24px 0; border-bottom: 1px solid var(--border); }
+  nav button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted);
+               padding: 8px 14px; font: inherit; cursor: pointer; }
+  nav button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  textarea { width: 100%; min-height: 84px; resize: vertical; background: var(--panel-2); color: var(--text);
+             border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font: inherit; }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+  .primary { background: var(--accent); color: #0f1115; border: 0; border-radius: 8px;
+             padding: 8px 18px; font-weight: 600; cursor: pointer; font: inherit; }
+  .primary:disabled { opacity: .5; cursor: progress; }
+  .chip { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
+          border-radius: 999px; padding: 4px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+  .chip:hover { color: var(--text); }
+  .status { color: var(--muted); font-size: 13px; margin-left: auto; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 20px 0 8px; }
+  .answer { font-size: 17px; }
+  .error { color: var(--err); }
+  .notice { color: var(--warn); }
+  pre { margin: 0; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+        padding: 12px; overflow-x: auto; font: 13px/1.5 var(--mono); color: var(--code); }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { background: var(--panel-2); color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .steps { display: flex; flex-wrap: wrap; gap: 6px; }
+  .step { font: 12px var(--mono); padding: 3px 8px; border-radius: 6px; background: var(--panel-2);
+          border: 1px solid var(--border); }
+  .step.success { border-color: #2f5a41; color: var(--ok); }
+  .step.error { border-color: #6b2c3a; color: var(--err); }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 16px; }
+  .schema-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .schema-grid h3 { margin: 0 0 8px; font: 600 14px var(--mono); color: var(--accent); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>nl-sql Playground</h1>
+  <span>Ask the demo database in plain English</span>
+</header>
+<nav role="tablist">
+  <button role="tab" id="tab-query" aria-selected="true" aria-controls="panel-query">Query</button>
+  <button role="tab" id="tab-schema" aria-selected="false" aria-controls="panel-schema">Schema</button>
+</nav>
+
+<main>
+  <section id="panel-query" role="tabpanel" aria-labelledby="tab-query">
+    <div class="panel">
+      <label for="question" class="sr-only" hidden>Question</label>
+      <textarea id="question" placeholder="e.g. What is the total value of shipped orders?"></textarea>
+      <div class="row">
+        <button class="primary" id="ask">Ask</button>
+        <button class="chip" data-q="How many orders are there?">How many orders?</button>
+        <button class="chip" data-q="What is the total value of shipped orders?">Shipped total</button>
+        <button class="chip" data-q="How many orders are expedited?">Expedited orders</button>
+        <span class="status" id="status">Ctrl/Cmd + Enter to ask</span>
+      </div>
+    </div>
+    <div id="result" hidden>
+      <h2>Answer</h2>
+      <div class="answer" id="answer"></div>
+      <div id="sql-block">
+        <h2>SQL</h2>
+        <pre id="sql"></pre>
+      </div>
+      <div id="rows-block">
+        <h2>Rows</h2>
+        <div class="table-wrap"><table id="rows"></table></div>
+      </div>
+      <h2>Agent steps</h2>
+      <div class="steps" id="steps"></div>
+      <div class="meta" id="meta"></div>
+    </div>
+  </section>
+
+  <section id="panel-schema" role="tabpanel" aria-labelledby="tab-schema" hidden>
+    <div class="schema-grid" id="schema"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const el = (tag, text, cls) => {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = text;
+  if (cls) node.className = cls;
+  return node;
+};
+
+// Tabs
+let schemaLoaded = false;
+document.querySelectorAll('[role="tab"]').forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll('[role="tab"]').forEach((t) => {
+      const selected = t === tab;
+      t.setAttribute("aria-selected", String(selected));
+      $(t.getAttribute("aria-controls")).hidden = !selected;
+    });
+    if (tab.id === "tab-schema" && !schemaLoaded) loadSchema();
+  });
+});
+
+// Query tab
+document.querySelectorAll(".chip").forEach((chip) =>
+  chip.addEventListener("click", () => { $("question").value = chip.dataset.q; ask(); }));
+$("ask").addEventListener("click", ask);
+$("question").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask();
+});
+
+async function ask() {
+  const question = $("question").value.trim();
+  if (!question) return;
+  $("ask").disabled = true;
+  const started = Date.now();
+  const timer = setInterval(() => {
+    $("status").textContent = `Thinking… ${Math.round((Date.now() - started) / 1000)}s`;
+  }, 250);
+  try {
+    const response = await fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    const data = await response.json();
+    render(response.ok ? data : { error: data.error || `HTTP ${response.status}` });
+    $("status").textContent = response.ok ? "Done" : "Failed";
+  } catch (error) {
+    render({ error: `Could not reach the server: ${error}` });
+    $("status").textContent = "Failed";
+  } finally {
+    clearInterval(timer);
+    $("ask").disabled = false;
+  }
+}
+
+function render(data) {
+  $("result").hidden = false;
+  const answer = $("answer");
+  answer.className = "answer";
+  if (data.error) {
+    answer.textContent = data.error;
+    answer.classList.add("error");
+  } else if (data.clarification) {
+    answer.textContent = `The agent needs clarification: ${data.clarification}`;
+    answer.classList.add("notice");
+  } else if (data.incomplete) {
+    answer.textContent = "The agent hit its round limit before answering.";
+    answer.classList.add("notice");
+  } else {
+    answer.textContent = data.answer || "(no answer)";
+  }
+
+  $("sql-block").hidden = !data.sql;
+  $("sql").textContent = data.sql || "";
+
+  const rows = data.rows || [];
+  $("rows-block").hidden = rows.length === 0;
+  const table = $("rows");
+  table.replaceChildren();
+  if (rows.length) {
+    const columns = Object.keys(rows[0]);
+    const head = el("tr");
+    columns.forEach((c) => head.append(el("th", c)));
+    table.append(head);
+    rows.forEach((row) => {
+      const tr = el("tr");
+      columns.forEach((c) => {
+        const value = row[c];
+        tr.append(el("td", value === null ? "NULL" : String(value),
+                     typeof value === "number" ? "num" : ""));
+      });
+      table.append(tr);
+    });
+  }
+
+  const steps = $("steps");
+  steps.replaceChildren();
+  (data.steps || []).forEach((s, i) => steps.append(el("span", `${i + 1}. ${s.tool}`, `step ${s.outcome}`)));
+  if (!steps.children.length) steps.append(el("span", "none", "step"));
+
+  const meta = [];
+  if (data.seconds !== undefined) meta.push(`${data.seconds}s`);
+  if (data.input_tokens) meta.push(`${data.input_tokens} input tokens`);
+  if (data.output_tokens) meta.push(`${data.output_tokens} output tokens`);
+  $("meta").textContent = meta.join(" · ");
+}
+
+// Schema tab
+async function loadSchema() {
+  const grid = $("schema");
+  grid.replaceChildren(el("p", "Loading…"));
+  try {
+    const data = await (await fetch("/api/schema")).json();
+    grid.replaceChildren();
+    if (data.error) { grid.append(el("p", data.error, "error")); return; }
+    data.tables.forEach((table) => {
+      const card = el("div", undefined, "panel");
+      card.append(el("h3", table.table_name));
+      const t = el("table");
+      const head = el("tr");
+      ["Column", "Type", "Key"].forEach((h) => head.append(el("th", h)));
+      t.append(head);
+      (table.columns || []).forEach((col) => {
+        const tr = el("tr");
+        tr.append(el("td", col.name), el("td", col.type || ""), el("td", col.primary_key ? "PK" : ""));
+        t.append(tr);
+      });
+      const wrap = el("div", undefined, "table-wrap");
+      wrap.append(t);
+      card.append(wrap);
+      grid.append(card);
+    });
+    schemaLoaded = true;
+  } catch (error) {
+    grid.replaceChildren(el("p", `Could not load schema: ${error}`, "error"));
+  }
+}
+</script>
+</body>
+</html>

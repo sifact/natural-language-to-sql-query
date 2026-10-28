@@ -92,6 +92,18 @@ Remote model endpoints must use HTTPS. HTTP is accepted only for loopback
 development endpoints such as `http://localhost:8080/v1`. The supported API
 surface is the project's OpenAI-compatible Chat Completions subset.
 
+## Try it in the browser
+
+Start the local playground after `nl-sql init` and the model settings above:
+
+```bash
+uv run nl-sql serve            # http://127.0.0.1:8000, or pass --port
+```
+
+The **Query** tab sends a question to the agent and shows its answer, final SQL,
+result rows and the tool steps it took. The **Schema** tab lists the demo tables.
+The server listens on loopback only and keeps the API key server-side.
+
 ## Local benchmark assets and preflight
 
 The benchmark path is optional and uses only local files beneath

@@ -26,6 +26,7 @@ from .evaluation import (
     validate_report_destination,
     write_report,
 )
+from .serving import DEFAULT_PORT, serve
 
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
@@ -54,6 +55,15 @@ def create_parser() -> argparse.ArgumentParser:
         "ask", help="Ask a question about the synthetic demo."
     )
     ask_parser.add_argument("question", nargs="+", help="Natural-language question.")
+    serve_parser = subparsers.add_parser(
+        "serve", help="Open a local browser UI for asking the synthetic demo."
+    )
+    serve_parser.add_argument(
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
+        help=f"Local port to listen on (default: {DEFAULT_PORT}).",
+    )
     benchmark_parser = subparsers.add_parser(
         "benchmark",
         help="Validate or run an explicitly authorized local benchmark.",
@@ -221,6 +231,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"nl-sql: {error}", file=sys.stderr)
             return EXIT_FAILURE
         print(f"Initialized demo database: {database_path}")
+        return EXIT_SUCCESS
+
+    if arguments.command == "serve":
+        if not DEFAULT_DATABASE_PATH.exists():
+            print("nl-sql: run `nl-sql init` first to create the demo database.", file=sys.stderr)
+            return EXIT_FAILURE
+        try:
+            serve(arguments.port)
+        except (SettingsError, OSError) as error:
+            print(f"nl-sql: {error}", file=sys.stderr)
+            return EXIT_FAILURE
         return EXIT_SUCCESS
 
     if arguments.command == "ask":
