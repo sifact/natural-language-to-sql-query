@@ -4,6 +4,6 @@ Sends validated OpenAI-compatible chat-completion requests through an injectable
 
 * Reads endpoint, model, key, and timeout from `Settings`.
 * Sends the configured key as a bearer credential only to the configured endpoint.
-* Redacts transport failures and rejects oversized or malformed responses.
-* Validates tool-call structure and JSON arguments.
+* Waits out short rate limits but fails fast with `ModelRateLimitError` when the wait is too long (e.g. a spent daily quota), redacting provider bodies.
+* Validates responses and tool calls, repairing calls the host rejects only for a leaked template token in the tool name.
 * Captures available prompt and completion token usage without inventing missing counts.

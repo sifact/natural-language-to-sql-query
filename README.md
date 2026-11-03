@@ -94,15 +94,61 @@ surface is the project's OpenAI-compatible Chat Completions subset.
 
 ## Try it in the browser
 
-Start the local playground after `nl-sql init` and the model settings above:
+Start the web app with the model settings above (it builds the demo database itself if
+`nl-sql init` hasn't been run):
 
 ```bash
 uv run nl-sql serve            # http://127.0.0.1:8000, or pass --port
 ```
 
-The **Ask** tab sends a question to the agent and shows its answer, the SQL the model wrote,
-result rows and the steps it took. The **Data** tab shows every demo table and its rows.
-The server listens on loopback only and keeps the API key server-side.
+The **Playground** tab takes a question and shows the answer, the steps the agent took, the
+SQL the model wrote and the rows it returned. Settings let a visitor pick the model and
+browse every demo table. The **About** tab explains the product for a non-technical reader
+and shows the measured results. Both tabs have light and dark themes (dark by default).
+
+The server binds to loopback and keeps the API key server-side. Questions are capped at
+500 characters and each visitor is limited to a few questions per minute and per day. When
+the model host's quota runs out, the page says so and suggests the other model.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `NL_SQL_MODEL_CHOICES` | unset | Comma-separated extra models a visitor may pick in Settings |
+| `NL_SQL_WEB_REQUESTS_PER_MINUTE` | `3` | Questions per visitor per minute |
+| `NL_SQL_WEB_REQUESTS_PER_DAY` | `20` | Questions per visitor per day |
+
+## Measured results on the demo
+
+`nl-sql eval-demo` asks the agent 15 fixed questions about the demo shop
+([`demo_questions.py`](src/nl_sql/data/demo_questions.py)), runs the SQL it wrote, and
+compares the rows with hand-written gold SQL. Any correct query counts, whatever its text.
+Model failures such as a spent quota are counted as errors, not wrong answers. The report is
+written to [`reports/`](reports/), and the About tab reads it.
+
+```bash
+uv run nl-sql eval-demo
+```
+
+Latest run, `openai/gpt-oss-20b` on Groq's free tier: **15 of 15 correct**, median 23.5 s
+and about 3,800 tokens per question. Simple questions took 2 s; the slowest took 85 s
+because the free tier throttles tokens per minute. Fifteen questions on one small schema
+show the method works; they say nothing certain about accuracy on a different database.
+
+## Deploying to Vercel
+
+The same app runs as a Vercel Python function (`[tool.vercel]` in `pyproject.toml` points
+at [`serving/entry.py`](src/nl_sql/serving/entry.py)). Set these environment variables in
+the Vercel project, then deploy:
+
+```bash
+vercel env add NL_SQL_BASE_URL production      # e.g. https://api.groq.com/openai/v1
+vercel env add NL_SQL_MODEL production         # default model
+vercel env add NL_SQL_API_KEY production       # kept on the server, never sent to the browser
+vercel env add NL_SQL_MODEL_CHOICES production # optional extra models
+vercel deploy --prod
+```
+
+Vercel's file system is read-only, so the app builds the synthetic demo database in temp
+storage on first use. Rate limits are kept in memory per function instance.
 
 ## Local benchmark assets and preflight
 
@@ -212,7 +258,8 @@ from nl_sql.evaluation import TaskRunner, build_report, write_report
 * [`config.py`](src/nl_sql/config.py) centralizes validated runtime settings.
 * [`data/`](src/nl_sql/data/) contains the [asset loader](src/nl_sql/data/guide/assets.md),
   [task selector](src/nl_sql/data/guide/selection.md), [knowledge catalog](src/nl_sql/data/guide/knowledge.md),
-  and [synthetic demo](src/nl_sql/data/guide/demo.md).
+  [synthetic demo](src/nl_sql/data/guide/demo.md), and
+  [demo questions](src/nl_sql/data/guide/demo_questions.md).
 * [`database/`](src/nl_sql/database/) contains the shared [provider contract](src/nl_sql/database/guide/provider.md),
   [SQLite tools](src/nl_sql/database/guide/sqlite_tools.md), [PostgreSQL tools](src/nl_sql/database/guide/postgres_tools.md),
   [template checks](src/nl_sql/database/guide/templates.md), and the [isolated task sandbox](src/nl_sql/database/guide/task_sandbox.md).
@@ -221,7 +268,11 @@ from nl_sql.evaluation import TaskRunner, build_report, write_report
   and [task tracing](src/nl_sql/agent/guide/tracing.md).
 * [`evaluation/`](src/nl_sql/evaluation/) contains the [value normalizer](src/nl_sql/evaluation/guide/normalize.md),
   [result matcher](src/nl_sql/evaluation/guide/matcher.md), [task runner](src/nl_sql/evaluation/guide/task_runner.md),
-  [metrics](src/nl_sql/evaluation/guide/metrics.md), and [report](src/nl_sql/evaluation/guide/report.md).
+  [metrics](src/nl_sql/evaluation/guide/metrics.md), [report](src/nl_sql/evaluation/guide/report.md),
+  and [demo evaluation](src/nl_sql/evaluation/guide/demo_eval.md).
+* [`serving/`](src/nl_sql/serving/) is the web app: a WSGI [app](src/nl_sql/serving/app.py)
+  with a per-visitor [rate limiter](src/nl_sql/serving/rate_limit.py), a
+  [demo service](src/nl_sql/serving/demo_service.py), a local server, and the static page.
 
 ## Data flow and safety
 

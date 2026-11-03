@@ -13,6 +13,7 @@ from .agent.sql_agent import AgentError, SqlAgent
 from .config import Settings, SettingsError
 from .data.assets import BenchmarkAssetError, load_local_benchmark_assets
 from .data.demo import DEFAULT_DATABASE_PATH, initialize_database
+from .data.demo_questions import DEMO_QUESTIONS
 from .data.selection import select_article_shaped_tasks, validate_run_limits
 from .database.provider import (
     DatabaseToolError,
@@ -23,7 +24,10 @@ from .evaluation import (
     ReportError,
     TaskRunner,
     TaskRunnerError,
+    evaluate_demo_questions,
+    summarize_demo_results,
     validate_report_destination,
+    write_demo_report,
     write_report,
 )
 from .serving import DEFAULT_PORT, serve
@@ -63,6 +67,20 @@ def create_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_PORT,
         help=f"Local port to listen on (default: {DEFAULT_PORT}).",
+    )
+    serve_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Interface to bind (default: 127.0.0.1; use 0.0.0.0 inside a container).",
+    )
+    eval_parser = subparsers.add_parser(
+        "eval-demo",
+        help="Score the agent on the fixed demo questions and write a report.",
+    )
+    eval_parser.add_argument(
+        "--report",
+        type=Path,
+        help="Report path (default: reports/demo-eval-<model>.json).",
     )
     benchmark_parser = subparsers.add_parser(
         "benchmark",
@@ -234,15 +252,15 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_SUCCESS
 
     if arguments.command == "serve":
-        if not DEFAULT_DATABASE_PATH.exists():
-            print("nl-sql: run `nl-sql init` first to create the demo database.", file=sys.stderr)
-            return EXIT_FAILURE
         try:
-            serve(arguments.port)
+            serve(arguments.port, arguments.host)
         except (SettingsError, OSError) as error:
             print(f"nl-sql: {error}", file=sys.stderr)
             return EXIT_FAILURE
         return EXIT_SUCCESS
+
+    if arguments.command == "eval-demo":
+        return _evaluate_demo(arguments.report)
 
     if arguments.command == "ask":
         try:
@@ -293,3 +311,36 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.error("Unsupported command.")
     return EXIT_FAILURE
+
+
+def _evaluate_demo(report_path: Path | None) -> int:
+    """Run the demo evaluation, printing one line per question as it finishes."""
+    if not DEFAULT_DATABASE_PATH.exists():
+        print("nl-sql: run `nl-sql init` first to create the demo database.", file=sys.stderr)
+        return EXIT_FAILURE
+    try:
+        settings = Settings.from_env()
+        settings.require_model()
+    except SettingsError as error:
+        print(f"nl-sql: {error}", file=sys.stderr)
+        return EXIT_FAILURE
+    database = DatabaseTools(DEFAULT_DATABASE_PATH, settings=settings)
+    results = []
+    for question in DEMO_QUESTIONS:
+        [result] = evaluate_demo_questions(
+            [question],
+            lambda: SqlAgent(ChatCompletionClient(settings), database, settings=settings),
+            database,
+            settings,
+        )
+        results.append(result)
+        print(
+            f"{result.question_id} {result.status:<6} {result.seconds:>5.1f}s "
+            f"{result.reason or ''}",
+            flush=True,
+        )
+    summary = summarize_demo_results(results)
+    path = write_demo_report(results, settings, report_path)
+    print(f"Passed {summary['passed']}/{summary['scored']} scored; {summary['errors']} errors.")
+    print(f"Report: {path}")
+    return EXIT_SUCCESS if summary["errors"] == 0 else EXIT_INCOMPLETE

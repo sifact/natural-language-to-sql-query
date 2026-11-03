@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import math
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
@@ -14,9 +16,12 @@ from ..config import Settings, SettingsError
 
 MAX_RESPONSE_BYTES = 1_000_000
 # Free-tier endpoints cap tokens per minute; waiting out a 429 beats failing the task.
+# A longer requested wait (e.g. a spent daily quota) fails fast instead of hanging.
 MAX_RATE_LIMIT_RETRIES = 8
 DEFAULT_RATE_LIMIT_WAIT_SECONDS = 20.0
 MAX_RATE_LIMIT_WAIT_SECONDS = 65.0
+# Provider wording for per-day caps, e.g. Groq's "tokens per day (TPD)".
+DAILY_QUOTA_MARKERS = (b"per day", b"(tpd)", b"(rpd)")
 # Some hosts reject a malformed model tool call with HTTP 400; a fresh sample usually
 # succeeds, so a few retries avoid failing the whole task on one bad generation.
 MAX_MALFORMED_TOOL_CALL_RETRIES = 3
@@ -26,6 +31,14 @@ Transport = Callable[[Request, float], bytes]
 
 class ModelError(Exception):
     """Raised when model configuration, transport, or response parsing fails."""
+
+
+class ModelRateLimitError(ModelError):
+    """Raised when the endpoint keeps rate-limiting or asks for a wait too long to honor."""
+
+    def __init__(self, message: str, retry_after_seconds: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
 
 
 @dataclass(frozen=True)
@@ -122,7 +135,12 @@ class ChatCompletionClient:
             },
             method="POST",
         )
-        response_body = self._send_with_rate_limit_retries(request)
+        tool_names = {
+            tool["function"]["name"]
+            for tool in tools
+            if isinstance(tool.get("function"), dict)
+        }
+        response_body = self._send_with_rate_limit_retries(request, tool_names)
 
         if len(response_body) > MAX_RESPONSE_BYTES:
             raise ModelError("Model endpoint response exceeded the size limit.")
@@ -133,28 +151,45 @@ class ChatCompletionClient:
             raise ModelError("Model endpoint returned invalid JSON.") from None
         return self._parse_response(decoded)
 
-    def _send_with_rate_limit_retries(self, request: Request) -> bytes:
+    def _send_with_rate_limit_retries(
+        self, request: Request, tool_names: set[str]
+    ) -> bytes:
         malformed_retries = 0
         for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
             try:
                 return self.transport(request, self.timeout)
             except HTTPError as error:
-                if (
-                    _is_malformed_tool_call(error)
-                    and malformed_retries < MAX_MALFORMED_TOOL_CALL_RETRIES
-                ):
-                    malformed_retries += 1
-                    continue
-                if error.code != 429 or attempt == MAX_RATE_LIMIT_RETRIES:
-                    raise ModelError(
-                        f"Model endpoint returned HTTP {error.code}."
-                    ) from None
-                self.sleep(_retry_after_seconds(error))
+                # Close each rejected response so retries don't leak sockets.
+                with error:
+                    failed_generation = _malformed_tool_call_generation(error)
+                    if failed_generation is not None:
+                        repaired = _repair_tool_call(failed_generation, tool_names)
+                        if repaired is not None:
+                            return repaired
+                        if malformed_retries == MAX_MALFORMED_TOOL_CALL_RETRIES:
+                            raise ModelError(
+                                "The model kept producing an invalid tool call; "
+                                "try again or use a different model."
+                            ) from None
+                        malformed_retries += 1
+                        continue
+                    if error.code != 429:
+                        raise ModelError(
+                            f"Model endpoint returned HTTP {error.code}."
+                        ) from None
+                    wait = _retry_after_seconds(error)
+                    if wait > MAX_RATE_LIMIT_WAIT_SECONDS:
+                        raise _long_rate_limit_error(error, wait) from None
+                    if attempt == MAX_RATE_LIMIT_RETRIES:
+                        break
+                self.sleep(wait)
             except (URLError, TimeoutError, OSError):
                 raise ModelError(
                     "Model request failed; check endpoint availability and configuration."
                 ) from None
-        raise ModelError("Model endpoint kept rate-limiting the request.")
+        raise ModelRateLimitError(
+            "Model endpoint kept rate-limiting the request; try again shortly."
+        )
 
     @staticmethod
     def _default_transport(request: Request, timeout: float) -> bytes:
@@ -245,21 +280,81 @@ class ChatCompletionClient:
 
 
 def _retry_after_seconds(error: HTTPError) -> float:
-    """Honor the endpoint's Retry-After header, bounded to keep runs predictable."""
+    """Read the endpoint's requested wait; callers decide whether it is worth honoring."""
     header = error.headers.get("Retry-After") if error.headers else None
     try:
         wait = float(header) if header is not None else DEFAULT_RATE_LIMIT_WAIT_SECONDS
     except ValueError:
         wait = DEFAULT_RATE_LIMIT_WAIT_SECONDS
-    return min(max(wait, 1.0), MAX_RATE_LIMIT_WAIT_SECONDS)
+    return max(wait, 1.0)
 
 
-def _is_malformed_tool_call(error: HTTPError) -> bool:
-    """Detect the host-side rejection of a malformed tool call from the model."""
-    if error.code != 400:
-        return False
+def _long_rate_limit_error(error: HTTPError, wait: float) -> ModelRateLimitError:
+    """Explain a wait too long to sit through, without echoing the provider's body."""
     try:
-        body = error.read(10_000)
+        body = error.read(10_000).lower()
     except OSError:
-        return False
-    return b"tool_use_failed" in body
+        body = b""
+    minutes = math.ceil(wait / 60)
+    unit = "minute" if minutes == 1 else "minutes"
+    limit = (
+        "daily token quota is used up"
+        if any(marker in body for marker in DAILY_QUOTA_MARKERS)
+        else "rate limit was reached"
+    )
+    return ModelRateLimitError(
+        f"The model endpoint's {limit}; try again in about {minutes} {unit} "
+        "or use a different model.",
+        retry_after_seconds=wait,
+    )
+
+
+def _malformed_tool_call_generation(error: HTTPError) -> str | None:
+    """Return the rejected generation when the host refused a malformed tool call.
+
+    Returns an empty string when the rejection carries no generation to repair.
+    """
+    if error.code != 400:
+        return None
+    try:
+        body = error.read(MAX_RESPONSE_BYTES)
+    except OSError:
+        return None
+    if b"tool_use_failed" not in body:
+        return None
+    try:
+        generation = json.loads(body)["error"]["failed_generation"]
+    except (json.JSONDecodeError, UnicodeDecodeError, KeyError, TypeError):
+        return ""
+    return generation if isinstance(generation, str) else ""
+
+
+def _repair_tool_call(generation: str, tool_names: set[str]) -> bytes | None:
+    """Rebuild a rejected call whose only defect is a leaked chat-template token.
+
+    gpt-oss models on some hosts append tokens like ``<|channel|>commentary`` to the
+    tool name; the arguments are intact, so a repair is cheaper than a resample.
+    Returns a chat-completions body that goes through normal validation, or None.
+    """
+    try:
+        call = json.loads(generation)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(call, dict) or not isinstance(call.get("name"), str):
+        return None
+    name = call["name"].split("<|", 1)[0].strip()
+    arguments = call.get("arguments")
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError:
+            return None
+    if name not in tool_names or not isinstance(arguments, dict):
+        return None
+    tool_call = {
+        "id": f"repaired_{uuid.uuid4().hex[:12]}",
+        "type": "function",
+        "function": {"name": name, "arguments": json.dumps(arguments)},
+    }
+    message = {"role": "assistant", "content": None, "tool_calls": [tool_call]}
+    return json.dumps({"choices": [{"message": message}]}).encode("utf-8")

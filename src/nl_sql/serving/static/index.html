@@ -1,478 +1,154 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>nl-sql Playground</title>
-<style>
-  :root {
-    --bg: #0b0d12; --bg-2: #10131a; --card: #151922; --card-2: #1b2030; --line: #262c3b;
-    --text: #e8eaf0; --muted: #8b93a7; --faint: #5d6579;
-    --accent: #8b9cff; --accent-2: #b48bff; --ok: #5fd39a; --warn: #f2c063; --err: #ff7a90;
-    --kw: #b48bff; --str: #7fd6a8; --num: #f2c063;
-    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SF Mono", Menlo, monospace;
-    --radius: 14px;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; min-height: 100vh; color: var(--text);
-    font: 15px/1.55 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
-    background: radial-gradient(1200px 500px at 15% -10%, #1c2140 0%, transparent 60%),
-                radial-gradient(900px 400px at 100% 0%, #2a1c40 0%, transparent 55%), var(--bg);
-  }
-  button { font: inherit; }
-
-  /* Top bar */
-  .topbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-            max-width: 1200px; margin: 0 auto; padding: 20px 20px 0; }
-  .brand { display: flex; align-items: center; gap: 10px; }
-  .logo { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
-          background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #0b0d12;
-          font: 700 15px var(--mono); }
-  .brand h1 { margin: 0; font-size: 18px; letter-spacing: -.01em; }
-  .brand p { margin: 0; color: var(--muted); font-size: 13px; }
-  .model-pill { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px;
-                color: var(--muted); background: var(--card); border: 1px solid var(--line);
-                padding: 6px 12px; border-radius: 999px; }
-  .model-pill b { color: var(--text); font-weight: 600; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
-
-  /* Tabs */
-  .tabs { max-width: 1200px; margin: 18px auto 0; padding: 0 20px; }
-  .segmented { display: inline-flex; gap: 4px; padding: 4px; background: var(--card);
-               border: 1px solid var(--line); border-radius: 12px; }
-  .segmented button { border: 0; background: none; color: var(--muted); padding: 7px 18px;
-                      border-radius: 9px; cursor: pointer; }
-  .segmented button[aria-selected="true"] { background: var(--card-2); color: var(--text);
-                                            box-shadow: inset 0 0 0 1px var(--line); }
-
-  main { max-width: 1200px; margin: 0 auto; padding: 18px 20px 60px; }
-  .card { background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid var(--line);
-          border-radius: var(--radius); padding: 18px; }
-  .card + .card { margin-top: 14px; }
-  .card-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px;
-                font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase;
-                letter-spacing: .06em; }
-  .badge { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 12px;
-           padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
-  .badge.ai { color: var(--accent-2); border-color: #4a3a73; background: #1f1830; }
-  .badge.ok { color: var(--ok); border-color: #24513c; background: #12241c; }
-  .spacer { margin-left: auto; }
-
-  /* Ask layout */
-  .ask-grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 280px; align-items: start; }
-  @media (max-width: 900px) { .ask-grid { grid-template-columns: 1fr; } }
-  .composer textarea { width: 100%; min-height: 96px; resize: vertical; border-radius: 12px;
-                       background: var(--bg-2); color: var(--text); border: 1px solid var(--line);
-                       padding: 14px 16px; font: inherit; font-size: 16px; }
-  .composer textarea:focus { outline: none; border-color: var(--accent);
-                             box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
-  .composer-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
-  .hint { color: var(--faint); font-size: 13px; }
-  kbd { font: 12px var(--mono); padding: 1px 6px; border: 1px solid var(--line); border-radius: 5px;
-        background: var(--bg-2); color: var(--muted); }
-  .btn-primary { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; border: 0;
-                 cursor: pointer; padding: 10px 20px; border-radius: 10px; font-weight: 600; color: #0b0d12;
-                 background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
-  .btn-primary:disabled { opacity: .55; cursor: progress; }
-  .btn-ghost { border: 1px solid var(--line); background: var(--bg-2); color: var(--muted);
-               padding: 5px 11px; border-radius: 8px; cursor: pointer; font-size: 13px; }
-  .btn-ghost:hover { color: var(--text); }
-  .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #0b0d1255;
-             border-top-color: #0b0d12; animation: spin .8s linear infinite; display: none; }
-  .loading .spinner { display: inline-block; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  .side h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); font-weight: 600; }
-  .suggestions, .history { display: flex; flex-direction: column; gap: 6px; }
-  .suggestion { text-align: left; border: 1px solid var(--line); background: var(--bg-2); color: var(--text);
-                padding: 9px 12px; border-radius: 10px; cursor: pointer; font-size: 14px; }
-  .suggestion:hover { border-color: var(--accent); }
-  .history .suggestion { color: var(--muted); font-size: 13px; }
-  .empty-note { color: var(--faint); font-size: 13px; }
-
-  /* Results */
-  .answer-text { font-size: 19px; line-height: 1.5; }
-  .answer-text.error { color: var(--err); }
-  .answer-text.notice { color: var(--warn); }
-  .meta { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 13px; margin-top: 10px; }
-  .explain { color: var(--muted); font-size: 13px; margin: -4px 0 12px; }
-  pre.sql { margin: 0; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px;
-            padding: 14px 16px; overflow-x: auto; font: 13.5px/1.6 var(--mono); color: var(--text); }
-  .kw { color: var(--kw); font-weight: 600; } .str { color: var(--str); } .num { color: var(--num); }
-
-  .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 10px; max-height: 460px; }
-  table { border-collapse: collapse; width: 100%; font-size: 14px; }
-  th, td { text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-  th { position: sticky; top: 0; background: var(--card-2); color: var(--muted); font-weight: 600; z-index: 1; }
-  th small { display: block; font: 11px var(--mono); color: var(--faint); font-weight: 400; }
-  tbody tr:hover td { background: #ffffff06; }
-  tr:last-child td { border-bottom: 0; }
-  td.num-cell { text-align: right; font-variant-numeric: tabular-nums; }
-  td.null { color: var(--faint); font-style: italic; }
-  td.json { font: 12.5px var(--mono); color: var(--str); }
-
-  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .steps li { display: flex; align-items: center; gap: 10px; font-size: 14px; }
-  .step-num { width: 24px; height: 24px; flex: none; border-radius: 50%; display: grid; place-items: center;
-              font: 600 12px var(--mono); background: var(--card-2); border: 1px solid var(--line); }
-  .steps li.success .step-num { color: var(--ok); border-color: #24513c; }
-  .steps li.error .step-num { color: var(--err); border-color: #6b2c3a; }
-  .step-tool { font: 12px var(--mono); color: var(--faint); }
-
-  .skeleton { height: 14px; border-radius: 6px; margin: 10px 0;
-              background: linear-gradient(90deg, var(--card-2), #262c40, var(--card-2));
-              background-size: 200% 100%; animation: shimmer 1.2s infinite; }
-  @keyframes shimmer { to { background-position: -200% 0; } }
-
-  .welcome { text-align: center; padding: 36px 18px; color: var(--muted); }
-  .welcome h2 { color: var(--text); font-size: 20px; margin: 0 0 6px; }
-
-  /* Data tab */
-  .data-intro { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
-  .data-intro p { margin: 0; color: var(--muted); }
-  .jump { display: flex; gap: 6px; flex-wrap: wrap; }
-  .table-card h3 { margin: 0; font: 600 15px var(--mono); color: var(--accent); }
-  .pk { color: var(--warn); font-size: 10px; margin-left: 4px; }
-  [hidden] { display: none !important; }
-</style>
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="Ask a database questions in plain English and see the answer, the SQL behind it and the rows it came from.">
+<title>Ask your database in plain English</title>
+<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-<div class="topbar">
+<a class="skip" href="#main">Skip to content</a>
+<header class="masthead">
   <div class="brand">
-    <div class="logo">SQL</div>
+    <span class="brand-mark" aria-hidden="true">?</span>
     <div>
-      <h1>nl-sql Playground</h1>
-      <p>Ask questions about the demo shop database in plain English</p>
+      <p class="brand-name">Ask your database</p>
+      <p class="brand-tag">Plain-English questions, answers you can check</p>
     </div>
   </div>
-  <div class="model-pill" title="Every SQL query is written by this model">
-    <span class="dot"></span>SQL written by <b id="model-name">AI model</b>
-    <span id="model-host"></span>
-  </div>
-</div>
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button class="tab" role="tab" id="tab-playground" aria-controls="panel-playground" aria-selected="true">Playground</button>
+    <button class="tab" role="tab" id="tab-about" aria-controls="panel-about" aria-selected="false" tabindex="-1">About</button>
+  </nav>
+  <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to light theme">
+    <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>
+    <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.6A8.3 8.3 0 0 1 9.4 4a8.3 8.3 0 1 0 10.6 10.6Z"/></svg>
+  </button>
+</header>
 
-<div class="tabs">
-  <div class="segmented" role="tablist">
-    <button role="tab" id="tab-ask" aria-selected="true" aria-controls="panel-ask">Ask</button>
-    <button role="tab" id="tab-data" aria-selected="false" aria-controls="panel-data">Data</button>
-  </div>
-</div>
-
-<main>
-  <!-- Ask tab -->
-  <section id="panel-ask" role="tabpanel" aria-labelledby="tab-ask">
-    <div class="ask-grid">
-      <div>
-        <div class="card composer">
-          <textarea id="question" aria-label="Your question"
-                    placeholder="Ask anything about customers, products or orders…"></textarea>
-          <div class="composer-row">
-            <span class="hint"><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>Enter</kbd> to ask</span>
-            <button class="btn-primary" id="ask"><span class="spinner"></span><span id="ask-label">Ask</span></button>
-          </div>
+<main id="main">
+<section class="panel" id="panel-playground" role="tabpanel" aria-labelledby="tab-playground">
+  <div class="play">
+    <div class="play-main">
+      <form class="composer" id="ask-form">
+        <label class="composer-label" for="question">Ask about the demo shop's customers, products and orders</label>
+        <textarea id="question" name="question" rows="2" maxlength="500" placeholder="Which customer has spent the most on shipped orders?" required></textarea>
+        <div class="composer-bar">
+          <span class="hint" id="char-count">0 / 500</span>
+          <button class="primary" id="ask-button" type="submit">Ask</button>
         </div>
+      </form>
 
-        <div id="welcome" class="card welcome">
-          <h2>Ask your first question</h2>
-          <div>The AI explores the tables, writes SQL, runs it read-only, and explains the answer.<br>
-            Pick a suggestion on the right, or open the <b>Data</b> tab to see what's in the database.</div>
-        </div>
-
-        <div id="loading" class="card" hidden>
-          <div class="card-title">The AI is exploring the database… <span class="badge" id="elapsed">0s</span></div>
-          <div class="skeleton" style="width:70%"></div>
-          <div class="skeleton" style="width:90%"></div>
-          <div class="skeleton" style="width:55%"></div>
-        </div>
-
-        <div id="result" hidden>
-          <div class="card">
-            <div class="card-title">Answer <span class="badge" id="answer-badge"></span></div>
-            <div class="answer-text" id="answer"></div>
-            <div class="meta" id="meta"></div>
-          </div>
-
-          <div class="card" id="sql-card">
-            <div class="card-title">
-              SQL written by the AI
-              <span class="badge ai" id="sql-model">LLM-generated</span>
-              <button class="btn-ghost spacer" id="copy-sql">Copy</button>
-            </div>
-            <p class="explain">The model wrote this query itself. The app only checked it is a safe,
-              read-only SELECT and then ran it.</p>
-            <pre class="sql" id="sql"></pre>
-          </div>
-
-          <div class="card" id="rows-card">
-            <div class="card-title">Result <span class="badge" id="row-count"></span></div>
-            <div class="table-wrap"><table id="rows"></table></div>
-          </div>
-
-          <div class="card">
-            <div class="card-title">How the AI got there</div>
-            <ol class="steps" id="steps"></ol>
-          </div>
+      <div class="result" id="result" aria-live="polite">
+        <div class="empty" id="empty-state">
+          <p class="empty-title">Pick an example or type your own question.</p>
+          <p>You'll get a plain answer, the SQL the AI wrote to find it, and the rows that SQL returned, so you can check it rather than trust it.</p>
         </div>
       </div>
-
-      <aside class="side">
-        <div class="card">
-          <h3>Try asking</h3>
-          <div class="suggestions" id="suggestions"></div>
-        </div>
-        <div class="card">
-          <h3>Recent questions</h3>
-          <div class="history" id="history"><span class="empty-note">Your questions will appear here.</span></div>
-        </div>
-      </aside>
     </div>
-  </section>
 
-  <!-- Data tab -->
-  <section id="panel-data" role="tabpanel" aria-labelledby="tab-data" hidden>
-    <div class="data-intro">
-      <p>Everything in the demo database. Compare it with the AI's answers to check them.</p>
-      <div class="jump spacer" id="jump"></div>
-    </div>
-    <div id="data"></div>
-  </section>
+    <aside class="play-side">
+      <section class="side-block side-examples">
+        <h2 class="side-title">Try one of these</h2>
+        <ul class="examples" id="examples"></ul>
+      </section>
+      <section class="side-block side-settings">
+        <h2 class="side-title">Settings</h2>
+        <label class="field-label" for="model">AI model that writes the SQL</label>
+        <select id="model"></select>
+        <p class="hint" id="model-hint">Both run on Groq's free tier, so answers can take up to a minute when it's busy.</p>
+      </section>
+      <section class="side-block side-data">
+        <h2 class="side-title">The data it can see</h2>
+        <p class="hint">Synthetic and public. No real customers.</p>
+        <div id="tables"></div>
+      </section>
+    </aside>
+  </div>
+</section>
+
+<section class="panel about" id="panel-about" role="tabpanel" aria-labelledby="tab-about" hidden>
+  <article class="prose">
+    <h1>Answers from your data without waiting for an analyst</h1>
+    <p class="lede">Most business questions already have an answer sitting in a database. Getting it usually means filing a request and waiting for someone who writes SQL. This tool lets anyone ask in plain English and shows its working, so the answer can be checked instead of taken on faith.</p>
+
+    <h2>The problem</h2>
+    <p>Managers ask simple questions like "which region sold the most last quarter?" Each one costs an analyst ten minutes and the manager a day of waiting. Dashboards cover the questions someone predicted. The rest wait in a queue, and some never get asked.</p>
+
+    <h2>What it does for you</h2>
+    <ul>
+      <li>Answers a question in a sentence. Simple questions take a couple of seconds; on this demo's free model tier, harder ones can take up to a minute.</li>
+      <li>Shows the exact query it ran and the rows behind the answer, so a numbers person can verify it.</li>
+      <li>Asks you to clarify instead of guessing when a question is ambiguous.</li>
+      <li>Can only read. It cannot change, delete or add data.</li>
+    </ul>
+
+    <h2>How it works</h2>
+    <figure class="diagram">
+      <svg class="diagram-wide" viewBox="0 0 760 190" role="img" aria-labelledby="diagram-title">
+        <title id="diagram-title">Your question goes to an AI model, which reads the table layout, writes a read-only query, runs it, and returns an answer with the query and rows. If the query fails, the model tries again.</title>
+        <defs><marker id="arrow-wide" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="d-arrowhead"/></marker></defs>
+        <g class="d-box"><rect x="10" y="20" width="150" height="74" rx="10"/><text x="85" y="52">Your question</text><text x="85" y="74" class="d-sub">plain English</text></g>
+        <g class="d-box d-core"><rect x="210" y="20" width="160" height="74" rx="10"/><text x="290" y="52">AI reads the</text><text x="290" y="74">table layout</text></g>
+        <g class="d-box d-core"><rect x="420" y="20" width="160" height="74" rx="10"/><text x="500" y="52">Writes and runs</text><text x="500" y="74">a read-only query</text></g>
+        <g class="d-box d-answer"><rect x="630" y="20" width="120" height="74" rx="10"/><text x="690" y="52">Answer</text><text x="690" y="74" class="d-sub">+ query + rows</text></g>
+        <path d="M160 57H206" class="d-line" marker-end="url(#arrow-wide)"/>
+        <path d="M370 57H416" class="d-line" marker-end="url(#arrow-wide)"/>
+        <path d="M580 57H626" class="d-line" marker-end="url(#arrow-wide)"/>
+        <path d="M500 94V132H290V98" class="d-line d-dashed" marker-end="url(#arrow-wide)"/>
+        <text x="395" y="156" class="d-sub">if the query fails or looks wrong, it tries again</text>
+      </svg>
+      <svg class="diagram-tall" viewBox="0 0 330 350" role="img" aria-labelledby="diagram-title-tall">
+        <title id="diagram-title-tall">Your question goes to an AI model, which reads the table layout, writes a read-only query, runs it, and returns an answer with the query and rows. If the query fails, the model tries again.</title>
+        <defs><marker id="arrow-tall" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="d-arrowhead"/></marker></defs>
+        <g class="d-box"><rect x="30" y="10" width="240" height="56" rx="10"/><text x="150" y="35">Your question</text><text x="150" y="54" class="d-sub">plain English</text></g>
+        <g class="d-box d-core"><rect x="30" y="100" width="240" height="56" rx="10"/><text x="150" y="124">AI reads the</text><text x="150" y="143">table layout</text></g>
+        <g class="d-box d-core"><rect x="30" y="190" width="240" height="56" rx="10"/><text x="150" y="214">Writes and runs</text><text x="150" y="233">a read-only query</text></g>
+        <g class="d-box d-answer"><rect x="30" y="280" width="240" height="56" rx="10"/><text x="150" y="305">Answer</text><text x="150" y="324" class="d-sub">+ query + rows</text></g>
+        <path d="M150 66V96" class="d-line" marker-end="url(#arrow-tall)"/>
+        <path d="M150 156V186" class="d-line" marker-end="url(#arrow-tall)"/>
+        <path d="M150 246V276" class="d-line" marker-end="url(#arrow-tall)"/>
+        <path d="M270 218H304V128H274" class="d-line d-dashed" marker-end="url(#arrow-tall)"/>
+        <text x="312" y="176" class="d-sub d-vert">retries</text>
+      </svg>
+      <figcaption class="hint">The database only ever receives read-only queries, checked before they run. If a query fails or looks wrong, the AI tries again.</figcaption>
+    </figure>
+
+    <h2>The data in this demo</h2>
+    <p>A small, made-up shop: customers, products, orders and order lines, with a few realistic traps. Only shipped orders count toward revenue, some details sit in a JSON field, and the price a customer paid differs from today's list price. Everything is synthetic, so nothing private is ever sent to the AI model. You can browse every row from the Playground.</p>
+
+    <h2>Measured results</h2>
+    <div id="results"><p class="hint">Loading the latest evaluation…</p></div>
+
+    <h2>Honest limitations</h2>
+    <ul>
+      <li>The demo database is tiny. Real schemas with hundreds of tables need table descriptions and business definitions loaded in. The system supports this, but it isn't shown here.</li>
+      <li>The evaluation is 15 questions on one schema. It shows the method works; it doesn't prove accuracy on your data. We'd build a question set from your own reports before go-live.</li>
+      <li>The score above belongs to the default model. The other model in Settings is offered for comparison but hasn't been scored.</li>
+      <li>The free model tier caps how many questions it can answer per minute and per day, so the public demo can slow down or pause. When one model runs out, switch to the other in Settings.</li>
+      <li>An answer can still be wrong. That's why the query and rows are always shown next to it.</li>
+    </ul>
+
+    <h2>Running it on your own data</h2>
+    <ul>
+      <li>A read-only database login. It works with SQLite and PostgreSQL today; others need a small adapter.</li>
+      <li>A short list of business definitions, such as what counts as "revenue" or an "active customer".</li>
+      <li>Twenty or so real questions with known answers, so we can measure accuracy on your schema before anyone relies on it.</li>
+      <li>A model endpoint you approve. It can be a hosted model, or one inside your own cloud so data never leaves it.</li>
+    </ul>
+
+    <h2>Tech stack</h2>
+    <p>Python standard library only on the server: an agent loop with tool calls, a read-only SQLite or PostgreSQL layer that checks every statement before it runs, and a result-matching evaluator. The model is any OpenAI-compatible endpoint; this demo uses gpt-oss on Groq. The page is plain HTML, CSS and JavaScript, hosted on Vercel.</p>
+  </article>
+</section>
 </main>
 
-<script>
-const $ = (id) => document.getElementById(id);
-const el = (tag, text, cls) => {
-  const node = document.createElement(tag);
-  if (text !== undefined && text !== null) node.textContent = text;
-  if (cls) node.className = cls;
-  return node;
-};
-
-const SUGGESTIONS = [
-  "How many orders are there?",
-  "What is the total value of shipped orders?",
-  "How many orders are expedited?",
-  "Which customer has spent the most?",
-  "What is the best-selling product by quantity?",
-];
-const STEP_LABELS = {
-  list_tables: "Listed the tables",
-  inspect_schema: "Read every table's columns",
-  inspect_table: "Looked at one table's columns",
-  query: "Ran a test query",
-  lookup_column_meaning: "Looked up what a column means",
-  search_knowledge: "Searched business definitions",
-  submit_answer: "Submitted the final SQL and answer",
-};
-
-// Model info
-let modelName = "the AI model";
-fetch("/api/info").then((r) => r.json()).then((info) => {
-  if (info.model) { modelName = info.model; $("model-name").textContent = info.model; }
-  if (info.endpoint) $("model-host").textContent = `· ${info.endpoint}`;
-}).catch(() => {});
-
-// Tabs
-let dataLoaded = false;
-document.querySelectorAll('[role="tab"]').forEach((tab) => tab.addEventListener("click", () => {
-  document.querySelectorAll('[role="tab"]').forEach((t) => {
-    t.setAttribute("aria-selected", String(t === tab));
-    $(t.getAttribute("aria-controls")).hidden = t !== tab;
-  });
-  if (tab.id === "tab-data" && !dataLoaded) loadData();
-}));
-
-// Suggestions and history
-SUGGESTIONS.forEach((q) => {
-  const b = el("button", q, "suggestion");
-  b.addEventListener("click", () => { $("question").value = q; ask(); });
-  $("suggestions").append(b);
-});
-let history = [];
-try { history = JSON.parse(localStorage.getItem("nlsql-history") || "[]"); } catch { history = []; }
-renderHistory();
-function remember(q) {
-  history = [q, ...history.filter((h) => h !== q)].slice(0, 8);
-  try { localStorage.setItem("nlsql-history", JSON.stringify(history)); } catch {}
-  renderHistory();
-}
-function renderHistory() {
-  const box = $("history");
-  if (!history.length) return;
-  box.replaceChildren();
-  history.forEach((q) => {
-    const b = el("button", q, "suggestion");
-    b.addEventListener("click", () => { $("question").value = q; $("question").focus(); });
-    box.append(b);
-  });
-}
-
-// Ask
-$("ask").addEventListener("click", ask);
-$("question").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask();
-});
-
-async function ask() {
-  const question = $("question").value.trim();
-  if (!question || $("ask").disabled) return;
-  remember(question);
-  $("ask").disabled = true;
-  $("ask").classList.add("loading");
-  $("ask-label").textContent = "Thinking";
-  $("welcome").hidden = true;
-  $("result").hidden = true;
-  $("loading").hidden = false;
-  const started = Date.now();
-  const timer = setInterval(() => {
-    $("elapsed").textContent = `${Math.round((Date.now() - started) / 1000)}s`;
-  }, 250);
-  try {
-    const response = await fetch("/api/ask", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
-    });
-    const data = await response.json();
-    render(response.ok ? data : { error: data.error || `Request failed (HTTP ${response.status}).` });
-  } catch (error) {
-    render({ error: `Could not reach the local server. Is \`nl-sql serve\` still running? (${error})` });
-  } finally {
-    clearInterval(timer);
-    $("loading").hidden = true;
-    $("ask").disabled = false;
-    $("ask").classList.remove("loading");
-    $("ask-label").textContent = "Ask";
-  }
-}
-
-function render(data) {
-  $("result").hidden = false;
-  const answer = $("answer");
-  const badge = $("answer-badge");
-  answer.className = "answer-text";
-  badge.className = "badge";
-  if (data.error) {
-    answer.textContent = data.error; answer.classList.add("error"); badge.textContent = "Error";
-  } else if (data.clarification) {
-    answer.textContent = `The AI needs more detail: ${data.clarification}`;
-    answer.classList.add("notice"); badge.textContent = "Needs clarification";
-  } else if (data.incomplete) {
-    answer.textContent = "The AI ran out of steps before answering. Try a simpler or more specific question.";
-    answer.classList.add("notice"); badge.textContent = "Incomplete";
-  } else {
-    answer.textContent = data.answer || "(no answer)";
-    badge.textContent = "Answered"; badge.classList.add("ok");
-  }
-
-  const meta = [];
-  if (data.seconds !== undefined) meta.push(`⏱ ${data.seconds}s`);
-  if (data.steps) meta.push(`🔁 ${data.steps.length} steps`);
-  if (data.input_tokens) meta.push(`↑ ${data.input_tokens.toLocaleString()} tokens in`);
-  if (data.output_tokens) meta.push(`↓ ${data.output_tokens.toLocaleString()} tokens out`);
-  $("meta").replaceChildren(...meta.map((m) => el("span", m)));
-
-  $("sql-card").hidden = !data.sql;
-  $("sql-model").textContent = `LLM-generated · ${modelName}`;
-  highlightSql($("sql"), data.sql || "");
-
-  const rows = data.rows || [];
-  $("rows-card").hidden = !data.sql;
-  $("row-count").textContent = `${rows.length} row${rows.length === 1 ? "" : "s"}`;
-  fillTable($("rows"), rows.length ? Object.keys(rows[0]).map((name) => ({ name })) : [], rows);
-
-  const steps = $("steps");
-  steps.replaceChildren();
-  (data.steps || []).forEach((s, i) => {
-    const li = el("li", undefined, s.outcome);
-    li.append(el("span", String(i + 1), "step-num"),
-              el("span", STEP_LABELS[s.tool] || s.tool),
-              el("span", s.tool, "step-tool"));
-    if (s.outcome === "error") li.append(el("span", "failed — the AI retried", "step-tool"));
-    steps.append(li);
-  });
-  if (!steps.children.length) steps.append(el("li", "No tool steps were recorded."));
-}
-
-// SQL highlighting built from text nodes only (no HTML injection).
-const SQL_TOKEN = /('(?:[^']|'')*'|\b\d+(?:\.\d+)?\b|\b(?:SELECT|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|ON|AND|OR|NOT|IN|IS|NULL|AS|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET|SUM|COUNT|AVG|MIN|MAX|DISTINCT|CASE|WHEN|THEN|ELSE|END|WITH|DESC|ASC|LIKE|BETWEEN|UNION|ALL|COALESCE|CAST|ROUND|JSON_EXTRACT)\b)/gi;
-function highlightSql(target, sql) {
-  target.replaceChildren();
-  let last = 0;
-  for (const match of sql.matchAll(SQL_TOKEN)) {
-    if (match.index > last) target.append(sql.slice(last, match.index));
-    const token = match[0];
-    const cls = token.startsWith("'") ? "str" : /^\d/.test(token) ? "num" : "kw";
-    target.append(el("span", token, cls));
-    last = match.index + token.length;
-  }
-  target.append(sql.slice(last));
-}
-
-function fillTable(table, columns, rows) {
-  table.replaceChildren();
-  if (!columns.length) return;
-  const thead = el("thead"), head = el("tr");
-  columns.forEach((c) => {
-    const th = el("th", c.name);
-    if (c.primary_key) th.append(el("span", "PK", "pk"));
-    if (c.type) th.append(el("small", c.type.toLowerCase()));
-    head.append(th);
-  });
-  thead.append(head);
-  const tbody = el("tbody");
-  rows.forEach((row) => {
-    const tr = el("tr");
-    columns.forEach((c) => {
-      const value = row[c.name];
-      let cls = "", text = value;
-      if (value === null || value === undefined) { cls = "null"; text = "null"; }
-      else if (typeof value === "number") cls = "num-cell";
-      else if (typeof value === "string" && /^[\[{]/.test(value.trim())) cls = "json";
-      tr.append(el("td", String(text), cls));
-    });
-    tbody.append(tr);
-  });
-  table.append(thead, tbody);
-}
-
-// Data tab
-async function loadData() {
-  const box = $("data");
-  box.replaceChildren(el("div", "Loading…", "card"));
-  try {
-    const data = await (await fetch("/api/data")).json();
-    box.replaceChildren();
-    if (data.error) { box.append(el("div", data.error, "card answer-text error")); return; }
-    const jump = $("jump");
-    jump.replaceChildren();
-    data.tables.forEach((t) => {
-      const card = el("div", undefined, "card table-card");
-      card.id = `table-${t.name}`;
-      const title = el("div", undefined, "card-title");
-      title.append(el("h3", t.name),
-                   el("span", `${t.rows.length} row${t.rows.length === 1 ? "" : "s"}${t.truncated ? "+" : ""}`, "badge"),
-                   el("span", `${t.columns.length} columns`, "badge"));
-      const wrap = el("div", undefined, "table-wrap");
-      const table = el("table");
-      fillTable(table, t.columns, t.rows);
-      wrap.append(table);
-      card.append(title, wrap);
-      box.append(card);
-      const b = el("button", t.name, "btn-ghost");
-      b.addEventListener("click", () => card.scrollIntoView({ behavior: "smooth", block: "start" }));
-      jump.append(b);
-    });
-    dataLoaded = true;
-  } catch (error) {
-    box.replaceChildren(el("div", `Could not load data: ${error}`, "card answer-text error"));
-  }
-}
-
-$("copy-sql").addEventListener("click", async () => {
-  try { await navigator.clipboard.writeText($("sql").textContent); $("copy-sql").textContent = "Copied"; }
-  catch { $("copy-sql").textContent = "Copy failed"; }
-  setTimeout(() => { $("copy-sql").textContent = "Copy"; }, 1500);
-});
-</script>
+<footer class="footer">
+  <p>Demo data is synthetic. Questions you type are sent to the AI model provider to generate SQL; don't enter personal information.</p>
+</footer>
+<script src="/static/app.js"></script>
 </body>
 </html>

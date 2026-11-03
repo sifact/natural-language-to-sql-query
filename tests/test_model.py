@@ -6,7 +6,11 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from nl_sql.agent.model_client import ChatCompletionClient, ModelError
+from nl_sql.agent.model_client import (
+    ChatCompletionClient,
+    ModelError,
+    ModelRateLimitError,
+)
 from nl_sql.config import Settings, SettingsError
 
 VALID_ENV = {
@@ -208,3 +212,134 @@ def test_given_transport_error_with_sensitive_reason_when_complete_then_redacts_
 
     # Assert
     assert "test-secret" not in str(captured.value)
+
+
+def rate_limit_error(retry_after: str | None, body: bytes = b"{}") -> HTTPError:
+    headers = {} if retry_after is None else {"Retry-After": retry_after}
+    return HTTPError(
+        "https://model.example/v1", 429, "rate limited", hdrs=headers, fp=BytesIO(body)
+    )
+
+
+def test_given_short_rate_limit_when_complete_then_waits_and_retries() -> None:
+    # Arrange
+    body = response_bytes({"content": "Done.", "tool_calls": []})
+    responses = [rate_limit_error("3"), body]
+    waits: list[float] = []
+
+    def transport(_request, _timeout):
+        item = responses.pop(0)
+        if isinstance(item, HTTPError):
+            raise item
+        return item
+
+    client = ChatCompletionClient(
+        Settings.from_env(VALID_ENV), transport=transport, sleep=waits.append
+    )
+
+    # Act
+    result = client.complete([], [])
+
+    # Assert
+    assert result.content == "Done."
+    assert waits == [3.0]
+
+
+def test_given_rate_limit_longer_than_wait_cap_when_complete_then_fails_fast() -> None:
+    # Arrange
+    waits: list[float] = []
+    calls: list[int] = []
+
+    def transport(_request, _timeout):
+        calls.append(1)
+        raise rate_limit_error("248")
+
+    client = ChatCompletionClient(
+        Settings.from_env(VALID_ENV), transport=transport, sleep=waits.append
+    )
+
+    # Act
+    with pytest.raises(ModelRateLimitError) as captured:
+        client.complete([], [])
+
+    # Assert
+    assert calls == [1]
+    assert waits == []
+    assert captured.value.retry_after_seconds == 248.0
+    assert "about 5 minutes" in str(captured.value)
+
+
+def test_given_daily_token_quota_when_complete_then_names_the_quota() -> None:
+    # Arrange
+    body = (
+        b'{"error":{"message":"Rate limit reached on tokens per day (TPD): '
+        b'Limit 200000, Used 199653. Please try again in 4m7s.","code":"rate_limit_exceeded"}}'
+    )
+
+    def transport(_request, _timeout):
+        raise rate_limit_error("248", body)
+
+    client = ChatCompletionClient(Settings.from_env(VALID_ENV), transport=transport)
+
+    # Act
+    with pytest.raises(ModelRateLimitError) as captured:
+        client.complete([], [])
+
+    # Assert
+    assert "daily" in str(captured.value)
+    assert "199653" not in str(captured.value)
+
+
+def malformed_tool_call_error(name: str, arguments: dict[str, object]) -> HTTPError:
+    generation = json.dumps({"name": name, "arguments": arguments})
+    body = json.dumps(
+        {"error": {"code": "tool_use_failed", "failed_generation": generation}}
+    ).encode("utf-8")
+    return HTTPError(
+        "https://model.example/v1", 400, "bad request", hdrs={}, fp=BytesIO(body)
+    )
+
+
+SUBMIT_TOOL = [{"type": "function", "function": {"name": "submit_answer"}}]
+
+
+def test_given_tool_name_with_leaked_channel_token_when_complete_then_repairs_call() -> None:
+    # Arrange
+    calls: list[int] = []
+
+    def transport(_request, _timeout):
+        calls.append(1)
+        raise malformed_tool_call_error(
+            "submit_answer<|channel|>commentary", {"answer": "4", "sql": "SELECT 4"}
+        )
+
+    client = ChatCompletionClient(Settings.from_env(VALID_ENV), transport=transport)
+
+    # Act
+    result = client.complete([], SUBMIT_TOOL)
+
+    # Assert
+    assert calls == [1]
+    assert [(call.name, call.arguments) for call in result.tool_calls] == [
+        ("submit_answer", {"answer": "4", "sql": "SELECT 4"})
+    ]
+    assert result.tool_calls[0].call_id
+
+
+def test_given_unrepairable_tool_calls_when_complete_then_explains_after_retries() -> None:
+    # Arrange
+    calls: list[int] = []
+
+    def transport(_request, _timeout):
+        calls.append(1)
+        raise malformed_tool_call_error("drop_tables", {})
+
+    client = ChatCompletionClient(Settings.from_env(VALID_ENV), transport=transport)
+
+    # Act
+    with pytest.raises(ModelError) as captured:
+        client.complete([], SUBMIT_TOOL)
+
+    # Assert
+    assert len(calls) == 4
+    assert "invalid tool call" in str(captured.value)

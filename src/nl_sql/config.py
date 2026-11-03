@@ -25,6 +25,12 @@ class Settings:
     model_url: str = ""
     model_name: str = ""
     model_key: str = field(default="", repr=False)
+    # Models a web visitor may pick; empty means only ``model_name``.
+    model_choices: tuple[str, ...] = ()
+    # Per-visitor limits for the public web demo; the model host has its own quota.
+    # Sized to a free model tier (about 50 questions a day per model), not to abuse alone.
+    web_requests_per_minute: int = 3
+    web_requests_per_day: int = 20
     max_rounds: int = 15
     max_tool_argument_length: int = 20_000
     row_cap: int = 100
@@ -62,6 +68,10 @@ class Settings:
         self._validate_integer(
             "postgres_lock_timeout_seconds", self.postgres_lock_timeout_seconds, 1, 60
         )
+        self._validate_integer(
+            "web_requests_per_minute", self.web_requests_per_minute, 1, 1_000
+        )
+        self._validate_integer("web_requests_per_day", self.web_requests_per_day, 1, 100_000)
         self._validate_integer("seed", self.seed, 0, 4_294_967_295)
         self._validate_integer("max_benchmark_tasks", self.max_benchmark_tasks, 1, 100)
         self._validate_timeout(
@@ -86,6 +96,15 @@ class Settings:
             model_url=values.get("NL_SQL_BASE_URL", "").strip().rstrip("/"),
             model_name=values.get("NL_SQL_MODEL", "").strip(),
             model_key=values.get("NL_SQL_API_KEY", "").strip(),
+            model_choices=tuple(
+                name.strip()
+                for name in values.get("NL_SQL_MODEL_CHOICES", "").split(",")
+                if name.strip()
+            ),
+            web_requests_per_minute=_integer_setting(
+                values, "NL_SQL_WEB_REQUESTS_PER_MINUTE", 3
+            ),
+            web_requests_per_day=_integer_setting(values, "NL_SQL_WEB_REQUESTS_PER_DAY", 20),
             max_rounds=_integer_setting(values, "NL_SQL_MAX_ROUNDS", 15),
             max_tool_argument_length=_integer_setting(
                 values, "NL_SQL_MAX_TOOL_ARGUMENT_LENGTH", 20_000
@@ -120,6 +139,12 @@ class Settings:
             benchmark_setup_dsn=values.get(BENCHMARK_SETUP_DSN_ENV, "").strip(),
             benchmark_query_dsn=values.get(BENCHMARK_QUERY_DSN_ENV, "").strip(),
         )
+
+    @property
+    def available_models(self) -> tuple[str, ...]:
+        """Models a web visitor may choose, always including the default model first."""
+        others = tuple(name for name in self.model_choices if name != self.model_name)
+        return ((self.model_name,) if self.model_name else ()) + others
 
     @property
     def completion_url(self) -> str:

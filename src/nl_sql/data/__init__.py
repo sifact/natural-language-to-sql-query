@@ -13,6 +13,7 @@ from .assets import (
     resolve_report_path,
 )
 from .demo import DEFAULT_DATABASE_PATH, initialize_database
+from .demo_questions import DEMO_QUESTIONS, DemoQuestion
 from .knowledge import (
     KNOWLEDGE_CATALOG_VERSION,
     ColumnMeaning,
@@ -30,12 +31,14 @@ from .selection import (
 
 __all__ = [
     "DEFAULT_DATABASE_PATH",
+    "DEMO_QUESTIONS",
     "KNOWLEDGE_CATALOG_VERSION",
     "AssetProvenance",
     "BenchmarkAssetError",
     "BenchmarkTask",
     "ColumnMeaning",
     "DatabaseInventory",
+    "DemoQuestion",
     "EvaluatorTaskInput",
     "InMemoryKnowledgeCatalog",
     "KnowledgeCatalog",

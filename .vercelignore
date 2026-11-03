@@ -1,0 +1,9 @@
+# Upload only what the web app needs; secrets and benchmark assets stay local.
+.env
+.env.*
+.venv
+.copilot-tracking
+/data/
+/tests/
+/docs/
+**/__pycache__

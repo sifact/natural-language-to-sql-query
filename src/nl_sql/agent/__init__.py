@@ -4,6 +4,7 @@ from .model_client import (
     ChatCompletionClient,
     ModelClient,
     ModelError,
+    ModelRateLimitError,
     ModelResponse,
     ToolCall,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "ChatCompletionClient",
     "ModelClient",
     "ModelError",
+    "ModelRateLimitError",
     "ModelResponse",
     "SqlAgent",
     "TaskTracer",
