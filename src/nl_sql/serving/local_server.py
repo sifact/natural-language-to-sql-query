@@ -5,6 +5,7 @@ from __future__ import annotations
 from socketserver import ThreadingMixIn
 from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
+from ..config import Settings
 from .app import create_app
 
 DEFAULT_PORT = 8000
@@ -33,7 +34,9 @@ def serve(port: int = DEFAULT_PORT, host: str = "127.0.0.1") -> None:
     Raises:
         SettingsError: If the model endpoint is not configured.
     """
-    app = create_app()
+    settings = Settings.from_env()
+    settings.require_model()
+    app = create_app(settings)
     with make_server(host, port, app, _ThreadingServer, _QuietHandler) as server:
         shown = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
         print(f"nl-sql UI running at http://{shown}:{port}  (Ctrl+C to stop)", flush=True)

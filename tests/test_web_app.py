@@ -162,3 +162,20 @@ def test_given_limiter_when_window_passes_then_allows_again() -> None:
     assert first is None
     assert second == pytest.approx(60.0)
     assert third is None
+
+
+def test_given_missing_model_settings_when_ask_then_names_what_is_missing(tmp_path) -> None:
+    # Arrange
+    service = DemoService(Settings(), initialize_database(tmp_path / "demo.sqlite3"), tmp_path)
+    unconfigured = WebApp(service, RateLimiter([(5, 60.0)]))
+
+    # Act
+    page_status = call(unconfigured)[0]
+    status, _headers, body = call(
+        unconfigured, "POST", "/api/ask", {"question": "How many orders?"}
+    )
+
+    # Assert
+    assert page_status == 200
+    assert status == 502
+    assert "NL_SQL_API_KEY" in json.loads(body)["error"]

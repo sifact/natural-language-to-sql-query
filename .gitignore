@@ -20,3 +20,5 @@ data/benchmark/
 
 # hve-core RPI working notes (local only)
 .copilot-tracking/
+.vercel
+.env*

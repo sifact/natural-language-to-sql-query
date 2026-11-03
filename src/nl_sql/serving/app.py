@@ -133,11 +133,10 @@ class WebApp:
 def create_app(settings: Settings | None = None) -> WebApp:
     """Build the app from environment settings and the demo database.
 
-    Raises:
-        SettingsError: If the model endpoint is not configured.
+    Model settings are not required here: a host that is missing them still serves the
+    page, data and results, and each question answers with what is missing.
     """
     runtime = settings or Settings.from_env()
-    runtime.require_model()
     limiter = RateLimiter(
         [(runtime.web_requests_per_minute, 60.0), (runtime.web_requests_per_day, DAY_SECONDS)]
     )

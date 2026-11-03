@@ -135,9 +135,9 @@ show the method works; they say nothing certain about accuracy on a different da
 
 ## Deploying to Vercel
 
-The same app runs as a Vercel Python function (`[tool.vercel]` in `pyproject.toml` points
-at [`serving/entry.py`](src/nl_sql/serving/entry.py)). Set these environment variables in
-the Vercel project, then deploy:
+The same app runs as a Vercel Python function: Vercel finds the root [`app.py`](app.py),
+which exposes the WSGI app. Set these environment variables in the Vercel project, then
+deploy:
 
 ```bash
 vercel env add NL_SQL_BASE_URL production      # e.g. https://api.groq.com/openai/v1

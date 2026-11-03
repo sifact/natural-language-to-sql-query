@@ -9,10 +9,6 @@ dependencies = []
 [project.scripts]
 nl-sql = "nl_sql:main"
 
-# Vercel imports this WSGI app; the same app runs locally via `nl-sql serve`.
-[tool.vercel]
-entrypoint = "nl_sql.serving.entry:app"
-
 [project.optional-dependencies]
 benchmark = [
     "psycopg[binary]>=3.2.0",
