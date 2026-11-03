@@ -1,7 +1,33 @@
 ---
 title: Natural-Language SQL Demo
-description: Run a local, read-only SQL exploration prototype with a configurable model endpoint.
+description: Ask a database questions in plain English; an LLM agent writes read-only SQL and shows the answer, the query and the rows.
 ---
+
+# Natural-Language SQL Agent
+
+**Live demo:** https://natural-language-to-sql-query-five.vercel.app
+
+![Python 3.13](https://img.shields.io/badge/python-3.13-blue)
+![Dependencies](https://img.shields.io/badge/server_dependencies-none-brightgreen)
+![Demo eval](https://img.shields.io/badge/demo_eval-15%2F15-brightgreen)
+![Hosted on Vercel](https://img.shields.io/badge/hosted_on-Vercel-black)
+
+Ask a database questions in plain English. An LLM agent reads the table layout, writes a
+read-only SQL query, runs it, and answers with the query and the rows it came from, so every
+answer can be checked instead of trusted.
+
+* **Playground:** example questions or free text, the agent's steps, the SQL it wrote, the
+  returned rows, a model picker, and a browser for the demo tables.
+* **About:** a plain-language page for customers covering the problem, how it works, the
+  measured results and the honest limitations.
+* **Safe by design:** the database connection is read-only and every statement is checked
+  before it runs; the API key never leaves the server; input size and per-visitor rate limits apply.
+* **Measured, not claimed:** `nl-sql eval-demo` scores 15 fixed questions against gold SQL.
+  Latest run: 15 of 15 correct on `gpt-oss-20b` (small synthetic schema, so read it as a method
+  check, not an accuracy guarantee).
+* **Standard library only** on the server; works with any OpenAI-compatible model endpoint.
+
+Tags: `nl2sql` `text-to-sql` `llm-agent` `tool-calling` `sqlite` `postgresql` `vercel` `groq`
 
 ## Overview
 
